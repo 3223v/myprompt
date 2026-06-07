@@ -25,6 +25,26 @@ export default function SettingsPage() {
   const [hasKey, setHasKey] = useState(false);
   const [keyPreview, setKeyPreview] = useState('');
   const [msg, setMsg] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState('');
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult('');
+    try {
+      const res = await fetch('/api/pipeline/novels/test-llm');
+      const d = await res.json();
+      if (d.success) {
+        setTestResult(`✅ LLM 连接成功\n模型: ${d.data.model}\nToken 用量: ${d.data.usage ? JSON.stringify(d.data.usage) : 'N/A'}\n响应预览: ${d.data.content?.slice(0, 150)}`);
+      } else {
+        setTestResult(`❌ ${d.error}`);
+      }
+    } catch (err) {
+      setTestResult(`❌ 连接失败: ${(err as Error).message}`);
+    } finally {
+      setTesting(false);
+    }
+  };
 
   useEffect(() => {
     fetch('/api/config')
@@ -127,8 +147,12 @@ OPENAI_MODEL=gpt-4o
         </div>
 
         {msg && <p className={`text-sm mt-4 ${msg.startsWith('✅') ? 'text-green-700' : 'text-red-700'}`}>{msg}</p>}
+        {testResult && <pre className={`text-xs mt-3 p-3 border whitespace-pre-wrap ${testResult.startsWith('✅') ? 'border-green-700 bg-green-50' : 'border-red-700 bg-red-50'}`}>{testResult}</pre>}
 
-        <div className="flex justify-end mt-6">
+        <div className="flex justify-between mt-6">
+          <Button variant="secondary" size="sm" onClick={handleTest} disabled={testing}>
+            {testing ? '测试中...' : '🔌 测试连接'}
+          </Button>
           <Button variant="primary" onClick={handleSave} disabled={saving}>
             {saving ? '保存中...' : '保存配置'}
           </Button>

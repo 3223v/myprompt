@@ -1,37 +1,52 @@
 /**
- * AI 增强管线 — 对已有结构化小说补充缺失字段
+ * AI 增强管线 — 对已有结构化小说逐章补充缺失信息
  *
- * 逐章调用 LLM，根据已有内容生成缺失的:
- *   - 章节摘要 (summary)
- *   - 角色描述 (description, personality)
- *   - 地点信息
- *   - 情节摘要 (如为空)
+ * 流程:
+ *   1. 逐章生成: 摘要 + 角色列表 + 地点列表
+ *   2. 全书角色汇总: 合并去重
+ *   3. 全书情节摘要
+ *   4. 保存
  */
 
-import fs from 'fs';
 import path from 'path';
-import type { Novel, NormalizedNovel, Character, NovelChapter } from '@/lib/types';
+import type { NormalizedNovel, Character } from '@/lib/types';
 import { LLMFactory } from '@/lib/modules/llm';
 import NovelStructuringPipeline from './novel-structuring';
 import NovelService from '@/lib/novel-service';
 
-const STORAGE_DIR = path.join(process.cwd(), 'data', 'storage');
+const SYS = '你是一个精确的 JSON 输出引擎。只返回 JSON，不包含任何解释、Markdown 或额外文本。';
 
-const PROMPTS = {
-  system: '你是一个精确的 JSON 输出引擎。只返回 JSON，不包含任何解释。',
+// ── 提示词 ──
 
-  /** 补充章节摘要 */
-  chapterSummary: (title: string, content: string) =>
-    `请用一句话概括以下章节的内容:\n\n章节标题: ${title}\n章节内容:\n${content.slice(0, 3000)}\n\n返回 JSON: {"summary": "一句话摘要"}`,
+const chapterEnrichPrompt = (title: string, content: string) =>
+  `分析以下小说章节，提取三项信息:
 
-  /** 补充角色描述 */
-  characterDesc: (name: string, context: string) =>
-    `根据以下文本，为角色"${name}"生成简短描述和性格特征:\n\n${context.slice(0, 2000)}\n\n返回 JSON: {"description": "外貌/背景描述", "personality": "性格特征"}`,
+章节标题: ${title}
+章节内容:
+${content.slice(0, 5000)}
 
-  /** 补充全书摘要 */
-  plotSummary: (title: string, author: string, chapters: string) =>
-    `请用 2-3 句话概括以下小说的情节:\n书名: ${title}\n作者: ${author}\n章节概要:\n${chapters}\n\n返回 JSON: {"plot_summary": "情节摘要"}`,
-};
+请返回一个 JSON 对象，格式如下（不要包含其他内容）:
+{
+  "summary": "一句话概括本章内容",
+  "characters": ["角色名1", "角色名2"],
+  "locations": ["地点1", "地点2"]
+}`;
+
+const fullBookPrompt = (title: string, author: string, chapInfo: string) =>
+  `请根据以下章节信息生成全书的综合分析:
+
+书名: ${title}
+作者: ${author}
+章节概要:
+${chapInfo}
+
+请返回一个 JSON 对象（不要包含其他内容）:
+{
+  "plot_summary": "2-3句话概括全书情节",
+  "characters": [
+    {"name": "角色名", "role": "主角|配角|龙套", "description": "简短外貌/背景描述", "personality": "性格特征"}
+  ]
+}`;
 
 export interface EnhancementProgress {
   stage: string;
@@ -43,59 +58,101 @@ export interface EnhancementProgress {
 export class NovelEnhancementPipeline {
   static async execute(
     novelId: string,
-    onProgress?: (progress: EnhancementProgress) => void
+    onProgress?: (p: EnhancementProgress) => void
   ): Promise<{ success: boolean; data?: NormalizedNovel; error?: string }> {
     const novel = NovelService.getById(novelId);
     if (!novel) return { success: false, error: '小说不存在' };
 
-    // 加载现有结构化数据
     let data = NovelStructuringPipeline.loadNormalizedData(novelId);
     if (!data) return { success: false, error: '结构化数据不存在，请先执行结构化分析' };
 
+    // 自动加载最新配置
+    LLMFactory.reload();
+
     try {
-      // 1. 补充全书摘要
-      if (!data.plot_summary || data.plot_summary.includes('待分析')) {
-        onProgress?.({ stage: 'summary', detail: '生成全书摘要...' });
-        data = await enhancePlotSummary(data);
-      }
+      const chapters = data.chapters;
+      let changed = false;
 
-      // 2. 补充角色描述
-      const charsNeedingDesc = data.characters.filter((c) => !c.description || !c.personality);
-      if (charsNeedingDesc.length > 0) {
-        onProgress?.({ stage: 'characters', detail: `补充 ${charsNeedingDesc.length} 个角色描述...`, total: charsNeedingDesc.length });
-        data = await enhanceCharacters(data);
-      }
+      // ── 步骤 1: 逐章增强 ──
+      if (chapters.length > 0) {
+        onProgress?.({ stage: 'chapters', detail: '逐章 AI 分析中...', total: chapters.length });
 
-      // 3. 逐章补充摘要
-      const chaptersNeedingSummary = data.chapters.filter((ch) => !ch.summary || ch.summary.includes('待分析'));
-      if (chaptersNeedingSummary.length > 0) {
-        onProgress?.({ stage: 'chapters', detail: `补充 ${chaptersNeedingSummary.length} 个章节摘要...`, total: chaptersNeedingSummary.length });
+        for (let i = 0; i < chapters.length; i++) {
+          const ch = chapters[i];
+          const needsSummary = !ch.summary || ch.summary.includes('待分析');
+          const needsChars = !ch.characters || ch.characters.length === 0;
+          const needsLocs = !ch.locations || ch.locations.length === 0;
 
-        for (let i = 0; i < data.chapters.length; i++) {
-          const ch = data.chapters[i];
-          if (!ch.summary || ch.summary.includes('待分析')) {
-            onProgress?.({ stage: 'chapters', detail: `生成摘要: ${ch.title}`, current: i + 1, total: data.chapters.length });
+          if (needsSummary || needsChars || needsLocs) {
+            onProgress?.({ stage: 'chapters', detail: `分析第 ${i + 1}/${chapters.length} 章: ${ch.title}`, current: i + 1, total: chapters.length });
+
             try {
-              const prompt = PROMPTS.chapterSummary(ch.title, ch.content);
+              const prompt = chapterEnrichPrompt(ch.title, ch.content);
               const result = await LLMFactory.chat(
-                [{ role: 'system', content: PROMPTS.system }, { role: 'user', content: prompt }],
-                { temperature: 0.3, maxTokens: 300 }
+                [{ role: 'system', content: SYS }, { role: 'user', content: prompt }],
+                { temperature: 0.3, maxTokens: 1500 }
               );
-              const parsed = safeJson(result.content);
-              if (parsed?.summary) {
-                data.chapters[i] = { ...ch, summary: parsed.summary };
+              const parsed = safeJson<{ summary?: string; characters?: string[]; locations?: string[] }>(result.content);
+              if (parsed) {
+                chapters[i] = {
+                  ...ch,
+                  summary: parsed.summary || ch.summary,
+                  characters: parsed.characters?.length ? parsed.characters : ch.characters,
+                  locations: parsed.locations?.length ? parsed.locations : ch.locations,
+                };
+                changed = true;
               }
-            } catch { /* skip */ }
+            } catch { /* 单章失败继续 */ }
           }
         }
+        data = { ...data, chapters };
       }
 
-      // 保存
-      onProgress?.({ stage: 'save', detail: '保存增强数据...' });
-      await NovelStructuringPipeline.saveNormalizedData(novelId, data);
-      NovelService.setNormalizedPath(novelId, path.join(novelId, 'normalized.json'));
+      // ── 步骤 2: 全书分析 ──
+      const chapInfo = chapters
+        .slice(0, 20)
+        .map((c) => `${c.title}: ${c.summary || '(无)'}`)
+        .join('\n');
 
-      onProgress?.({ stage: 'done', detail: '增强完成' });
+      const needsPlotSummary = !data.plot_summary || data.plot_summary.includes('待分析');
+      const needsCharacters = !data.characters || data.characters.length === 0;
+
+      if (needsPlotSummary || needsCharacters) {
+        onProgress?.({ stage: 'full', detail: '全书 AI 分析...' });
+
+        try {
+          const prompt = fullBookPrompt(data.metadata.title, data.metadata.author, chapInfo);
+          const result = await LLMFactory.chat(
+            [{ role: 'system', content: SYS }, { role: 'user', content: prompt }],
+            { temperature: 0.5, maxTokens: 3000 }
+          );
+          const parsed = safeJson<{
+            plot_summary?: string;
+            characters?: Array<{ name: string; role?: string; description?: string; personality?: string }>;
+          }>(result.content);
+
+          if (parsed) {
+            if (parsed.plot_summary) {
+              data = { ...data, plot_summary: parsed.plot_summary };
+              changed = true;
+            }
+            if (parsed.characters?.length) {
+              const merged = mergeCharacters(data.characters, parsed.characters);
+              data = { ...data, characters: merged };
+              changed = true;
+            }
+          }
+        } catch { /* skip */ }
+      }
+
+      // ── 步骤 3: 保存 ──
+      if (changed) {
+        onProgress?.({ stage: 'save', detail: '保存增强数据...' });
+        await NovelStructuringPipeline.saveNormalizedData(novelId, data);
+        NovelService.setNormalizedPath(novelId, path.join(novelId, 'normalized.json'));
+      }
+
+      onProgress?.({ stage: 'done', detail: changed ? 'AI 增强完成' : '无需增强，数据已完整' });
       return { success: true, data };
     } catch (err) {
       return { success: false, error: (err as Error).message };
@@ -103,57 +160,39 @@ export class NovelEnhancementPipeline {
   }
 }
 
-async function enhancePlotSummary(data: NormalizedNovel): Promise<NormalizedNovel> {
-  try {
-    const chaptersInfo = data.chapters
-      .slice(0, 15)
-      .map((ch) => `${ch.title}: ${ch.summary || '(无摘要)'}`)
-      .join('\n');
-
-    const prompt = PROMPTS.plotSummary(data.metadata.title, data.metadata.author, chaptersInfo);
-    const result = await LLMFactory.chat(
-      [{ role: 'system', content: PROMPTS.system }, { role: 'user', content: prompt }],
-      { temperature: 0.5, maxTokens: 500 }
-    );
-    const parsed = safeJson(result.content);
-    if (parsed?.plot_summary) {
-      return { ...data, plot_summary: parsed.plot_summary };
-    }
-  } catch { /* skip */ }
-  return data;
-}
-
-async function enhanceCharacters(data: NormalizedNovel): Promise<NormalizedNovel> {
-  const context = data.chapters.slice(0, 5).map((ch) => ch.content).join('\n');
-  const updated = [...data.characters];
-
-  for (let i = 0; i < updated.length; i++) {
-    const c = updated[i];
-    if (!c.description || !c.personality) {
-      try {
-        const prompt = PROMPTS.characterDesc(c.name, context);
-        const result = await LLMFactory.chat(
-          [{ role: 'system', content: PROMPTS.system }, { role: 'user', content: prompt }],
-          { temperature: 0.4, maxTokens: 400 }
-        );
-        const parsed = safeJson(result.content);
-        if (parsed) {
-          updated[i] = {
-            ...c,
-            description: parsed.description || c.description,
-            personality: parsed.personality || c.personality,
-          };
-        }
-      } catch { /* skip */ }
+/** 合并角色列表（新角色追加，已有角色补充信息） */
+function mergeCharacters(
+  existing: Character[],
+  aiChars: Array<{ name: string; role?: string; description?: string; personality?: string }>
+): Character[] {
+  const map = new Map<string, Character>();
+  for (const c of existing) map.set(c.name, c);
+  for (const ac of aiChars) {
+    if (map.has(ac.name)) {
+      const old = map.get(ac.name)!;
+      map.set(ac.name, {
+        ...old,
+        role: old.role || ac.role,
+        description: old.description || ac.description,
+        personality: old.personality || ac.personality,
+      });
+    } else {
+      map.set(ac.name, {
+        id: `char-ai-${map.size + 1}`,
+        name: ac.name,
+        role: ac.role || '配角',
+        description: ac.description,
+        personality: ac.personality,
+      });
     }
   }
-  return { ...data, characters: updated };
+  return [...map.values()];
 }
 
-function safeJson(content: string): Record<string, string> | null {
+function safeJson<T>(content: string): T | null {
   try { return JSON.parse(content); } catch {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (match) { try { return JSON.parse(match[0]); } catch { return null; } }
+    const m = content.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch { return null; } }
     return null;
   }
 }
