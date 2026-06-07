@@ -9,6 +9,8 @@ import { registerNovelStructuringStrategy } from '@/lib/pipeline/types';
 import { DefaultNovelStructuringStrategy } from './default-strategy';
 import { RegexNovelStructuringStrategy } from './regex-strategy';
 import { AIStructuringStrategy } from './ai-strategy';
+import { EpubStructuringStrategy } from './epub-strategy';
+import { LangGraphStructuringStrategy } from './langgraph-strategy';
 
 /** 保证策略已注册 (幂等) */
 let initialized = false;
@@ -19,6 +21,8 @@ export function ensureStrategiesRegistered(): void {
   registerNovelStructuringStrategy(new DefaultNovelStructuringStrategy());
   registerNovelStructuringStrategy(new RegexNovelStructuringStrategy());
   registerNovelStructuringStrategy(new AIStructuringStrategy());
+  registerNovelStructuringStrategy(new EpubStructuringStrategy());
+  registerNovelStructuringStrategy(new LangGraphStructuringStrategy());
 
   initialized = true;
 }
@@ -26,3 +30,5 @@ export function ensureStrategiesRegistered(): void {
 export { DefaultNovelStructuringStrategy } from './default-strategy';
 export { RegexNovelStructuringStrategy } from './regex-strategy';
 export { AIStructuringStrategy } from './ai-strategy';
+export { EpubStructuringStrategy } from './epub-strategy';
+export { LangGraphStructuringStrategy } from './langgraph-strategy';

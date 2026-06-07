@@ -100,7 +100,8 @@ export type Chapter = { index: number; title: string; summary: string };
 
 export interface Script {
   id: string;
-  novel_id: string;
+  /** 关联的小说 ID（可为 null — 独立剧本） */
+  novel_id: string | null;
   version: string;
   format: string;
   file_path: string;

@@ -21,33 +21,21 @@ export default function ScriptsPage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      // 获取全部小说
+      // 获取全部小说（供下拉框使用）
       const novelsRes = await fetch('/api/novels');
       const novelsData = await novelsRes.json();
-      const allNovels: Novel[] = novelsData.success ? novelsData.data : [];
-      setNovels(allNovels);
+      setNovels(novelsData.success ? novelsData.data : []);
 
-      // 获取每部小说的剧本
-      const allScripts: ScriptWithNovel[] = [];
-      for (const novel of allNovels) {
-        const res = await fetch(`/api/novels/${novel.id}`);
-        const data = await res.json();
-        if (data.success && data.data.scripts) {
-          for (const script of data.data.scripts) {
-            allScripts.push({ ...script, novel_title: novel.title });
-          }
-        }
-      }
-      setScripts(allScripts);
-      if (allNovels.length > 0 && !selectedNovelId) {
-        setSelectedNovelId(allNovels[0].id);
-      }
+      // 获取全部剧本（含独立剧本）
+      const scriptsRes = await fetch('/api/scripts');
+      const scriptsData = await scriptsRes.json();
+      setScripts(scriptsData.success ? scriptsData.data : []);
     } catch (error) {
       console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [selectedNovelId]);
+  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -145,24 +133,14 @@ export default function ScriptsPage() {
         </div>
       )}
 
-      {/* 创建剧本弹窗 */}
-      {showCreateModal && novels.length > 0 && (
+      {/* 创建剧本弹窗 — 无论是否有小说，均可创建独立剧本 */}
+      {showCreateModal && (
         <ScriptCreateModal
           open={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreated={fetchAll}
-          novelTitle={novels.find(n => n.id === selectedNovelId)?.title || ''}
-          novelAuthor={novels.find(n => n.id === selectedNovelId)?.author || ''}
-          novelId={selectedNovelId || novels[0].id}
+          allowNoNovel
         />
-      )}
-      {showCreateModal && novels.length === 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-white wireframe-border wireframe-shadow p-6 max-w-md" onClick={e => e.stopPropagation()}>
-            <p className="text-sm mb-4">尚未创建小说，请先创建小说。</p>
-            <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(false)}>关闭</Button>
-          </div>
-        </div>
       )}
     </div>
   );

@@ -23,9 +23,12 @@ npm run dev     # 启动开发服务器
 
 ## 项目文档
 
-- [系统概述](docs/system-overview.md) — 架构、数据模型、技术栈
-- [API 文档](docs/api-docs.md) — 全部 API 端点说明
-- [策略实现指南](docs/strategy-guide.md) — 算法实现详解
+- [架构总览](docs/architecture.md) — 架构、目录、技术栈
+- [API 参考](docs/api.md) — 全部 API 端点
+- [数据模型](docs/data-model.md) — 数据库、JSON 结构、存储
+- [策略指南](docs/strategies.md) — 算法实现详解
+- [配置指南](docs/configuration.md) — LLM / 向量数据库 / OCR 配置
+- [EPUB 参考](docs/epub-strategy.md) — EPUB 解析参考实现
 
 ## 设计风格
 

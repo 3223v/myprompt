@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Badge from '@/components/ui/Badge';
 import type { Novel } from '@/lib/types';
 
 interface NovelInfoProps {
   novel: Novel;
+  onUpdate: () => void;
 }
 
 const statusLabels: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'error' }> = {
@@ -15,12 +17,56 @@ const statusLabels: Record<string, { label: string; variant: 'default' | 'succes
   error: { label: '错误', variant: 'error' },
 };
 
-/** 小说基本信息 — 表格布局 */
-export default function NovelInfo({ novel }: NovelInfoProps) {
+/** 小说基本信息 — 表格布局，支持内联编辑标题和作者 */
+export default function NovelInfo({ novel, onUpdate }: NovelInfoProps) {
   const status = statusLabels[novel.status] || statusLabels.uploading;
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleVal, setTitleVal] = useState(novel.title);
+  const [editingAuthor, setEditingAuthor] = useState(false);
+  const [authorVal, setAuthorVal] = useState(novel.author || '');
+
+  const saveField = async (field: string, value: string) => {
+    await fetch(`/api/novels/${novel.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    });
+    onUpdate();
+  };
 
   const rows: { label: string; value: React.ReactNode }[] = [
-    { label: '作者', value: novel.author || '未知' },
+    {
+      label: '书名',
+      value: editingTitle ? (
+        <input
+          value={titleVal} onChange={(e) => setTitleVal(e.target.value)}
+          onBlur={() => { setEditingTitle(false); if (titleVal !== novel.title) saveField('title', titleVal); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { setEditingTitle(false); if (titleVal !== novel.title) saveField('title', titleVal); } }}
+          className="px-2 py-0.5 text-sm border border-black focus:outline-none focus:ring-1 focus:ring-black"
+          autoFocus
+        />
+      ) : (
+        <span className="cursor-pointer hover:bg-gray-100 px-1" onClick={() => setEditingTitle(true)} title="点击编辑书名">
+          {novel.title} ✎
+        </span>
+      ),
+    },
+    {
+      label: '作者',
+      value: editingAuthor ? (
+        <input
+          value={authorVal} onChange={(e) => setAuthorVal(e.target.value)}
+          onBlur={() => { setEditingAuthor(false); if (authorVal !== (novel.author || '')) saveField('author', authorVal); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { setEditingAuthor(false); if (authorVal !== (novel.author || '')) saveField('author', authorVal); } }}
+          className="px-2 py-0.5 text-sm border border-black focus:outline-none focus:ring-1 focus:ring-black"
+          autoFocus
+        />
+      ) : (
+        <span className="cursor-pointer hover:bg-gray-100 px-1" onClick={() => setEditingAuthor(true)} title="点击编辑作者">
+          {novel.author || '未知'} ✎
+        </span>
+      ),
+    },
     { label: '状态', value: <Badge label={status.label} variant={status.variant} /> },
     { label: '创建时间', value: new Date(novel.created_at).toLocaleString('zh-CN') },
     { label: '更新时间', value: new Date(novel.updated_at).toLocaleString('zh-CN') },

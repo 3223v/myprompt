@@ -84,36 +84,19 @@ function detectAndDecode(buffer: Buffer): { text: string; encoding: string } {
     return { text: swapped.toString('utf16le'), encoding: 'utf-16be' };
   }
 
-  // 2. UTF-8 有效性检查 — 如果整个文件是合法 UTF-8，直接返回
+  // 2. UTF-8 有效性检查 — TextDecoder fatal 模式精确判定
   try {
-    const utf8 = buffer.toString('utf-8');
-    // 检查是否有替换字符 (U+FFFD) — 出现则表示无效 UTF-8 序列
-    if (!utf8.includes('�')) {
-      return { text: utf8, encoding: 'utf-8' };
-    }
-  } catch { /* fall through */ }
+    const td = new TextDecoder('utf-8', { fatal: true });
+    return { text: td.decode(buffer), encoding: 'utf-8' };
+  } catch { /* 不是合法 UTF-8，继续尝试 GBK */ }
 
-  // 3. GBK/GB2312/GB18030 启发式检测
-  //    中文字符在 GBK 中通常以 0x81-0xFE 开头，后跟 0x40-0xFE
-  let gbkScore = 0;
-  for (let i = 0; i < buffer.length - 1; i++) {
-    const b1 = buffer[i];
-    const b2 = buffer[i + 1];
-    if (b1 >= 0x81 && b1 <= 0xFE && b2 >= 0x40 && b2 <= 0xFE) {
-      gbkScore++;
-      i++; // 跳过一个字节
-    }
-  }
+  // 3. 尝试 GB18030（兼容 GBK/GB2312）
+  try {
+    const td = new TextDecoder('gb18030', { fatal: true });
+    return { text: td.decode(buffer), encoding: 'gb18030' };
+  } catch { /* 也不是 GB 系列 */ }
 
-  // 如果高字节对比例超过 10%，判定为 GBK
-  if (gbkScore > buffer.length * 0.1) {
-    try {
-      const gbkText = buffer.toString('gbk' as BufferEncoding);
-      return { text: gbkText, encoding: 'gbk' };
-    } catch { /* fall through */ }
-  }
-
-  // 4. 兜底: UTF-8 (保留替换字符)
+  // 4. 兜底: UTF-8 宽松模式（可能产生 �）
   return { text: buffer.toString('utf-8'), encoding: 'utf-8' };
 }
 

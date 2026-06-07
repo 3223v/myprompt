@@ -27,6 +27,21 @@ export default function ScriptDetailPage() {
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState('');
   const [showGenModal, setShowGenModal] = useState(false);
+  const [genStrategies, setGenStrategies] = useState<Array<{ name: string; description: string }>>([]);
+  const [novels, setNovels] = useState<Array<{ id: string; title: string }>>([]);
+
+  const loadGenStrategies = () => {
+    const nid = script?.novel_id;
+    if (!nid) { setGenStrategies([]); return; }
+    fetch(`/api/pipeline/scripts/${nid}/generate`)
+      .then((r) => r.json())
+      .then((data) => { if (data.success && data.data) setGenStrategies(data.data); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetch('/api/novels').then(r => r.json()).then(d => { if (d.success) setNovels(d.data); });
+  }, []);
 
   // 编辑相关
   const [editItemIdx, setEditItemIdx] = useState<{ sceneIdx: number; itemIdx: number } | null>(null);
@@ -291,11 +306,27 @@ export default function ScriptDetailPage() {
           {meta.logline && <p className="text-sm text-gray-600 mt-2 italic">{meta.logline}</p>}
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" disabled={generating} onClick={() => setShowGenModal(true)}>
+          <Button variant="secondary" size="sm" disabled={generating} onClick={() => { loadGenStrategies(); setShowGenModal(true); }}>
             {generating ? '生成中...' : '🤖 生成剧本'}
           </Button>
           <Button variant="primary" size="sm" onClick={() => handleSave()} disabled={saving}>
             {saving ? '保存中...' : '保存'}
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => {
+              if (!confirm('确定要删除这个剧本吗？此操作不可撤销。')) return;
+              fetch(`/api/scripts/${scriptId}`, { method: 'DELETE' })
+                .then((r) => r.json())
+                .then((res) => {
+                  if (res.success) router.push('/scripts');
+                  else alert(`删除失败: ${res.error}`);
+                })
+                .catch((err) => alert(`删除失败: ${err.message}`));
+            }}
+          >
+            删除
           </Button>
         </div>
       </div>
@@ -321,7 +352,26 @@ export default function ScriptDetailPage() {
           <div className="grid grid-cols-2 gap-4">
             <Input label="剧本标题" value={meta.title} onChange={(e) => updateMeta('title', e.target.value)} />
             <Input label="作者" value={meta.author} onChange={(e) => updateMeta('author', e.target.value)} />
-            <Input label="原著" value={meta.based_on} onChange={(e) => updateMeta('based_on', e.target.value)} />
+            <div>
+              <label className="block text-sm font-medium text-black mb-1">关联小说</label>
+              <select
+                value={script?.novel_id || ''}
+                onChange={(e) => {
+                  const newId = e.target.value || null;
+                  const novel = novels.find(n => n.id === newId);
+                  updateMeta('based_on', novel?.title || '');
+                  fetch(`/api/scripts/${scriptId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ novelId: newId }),
+                  }).then(() => fetchScript());
+                }}
+                className="w-full px-3 py-2 text-sm bg-white border border-black focus:outline-none focus:ring-2 focus:ring-black"
+              >
+                <option value="">— 独立剧本（不关联小说）—</option>
+                {novels.map(n => <option key={n.id} value={n.id}>{n.title}</option>)}
+              </select>
+            </div>
             <Input label="版本号" value={meta.version} onChange={(e) => updateMeta('version', e.target.value)} />
             <Input label="日期" value={meta.date} onChange={(e) => updateMeta('date', e.target.value)} />
             <div>
@@ -535,14 +585,20 @@ export default function ScriptDetailPage() {
           {!generating && !genProgress.includes('完成') && (
             <div className="space-y-2">
               <p className="text-sm text-gray-500">选择生成策略:</p>
-              <button onClick={() => handleGenerate('default')} className="w-full text-left p-3 border border-black hover:bg-gray-50 text-sm">
-                <span className="font-semibold">默认策略</span>
-                <span className="text-gray-400 ml-2">— 生成空白模板，仅填充元数据</span>
-              </button>
-              <button onClick={() => handleGenerate('ai-rag')} className="w-full text-left p-3 border border-black hover:bg-gray-50 text-sm">
-                <span className="font-semibold">AI + RAG 策略</span>
-                <span className="text-gray-400 ml-2">— LLM 逐场景生成，需配置 LLM</span>
-              </button>
+              {genStrategies.length > 0 ? (
+                genStrategies.map((s) => (
+                  <button
+                    key={s.name}
+                    onClick={() => handleGenerate(s.name)}
+                    className="w-full text-left p-3 border border-black hover:bg-gray-50 text-sm"
+                  >
+                    <span className="font-semibold">{s.name}</span>
+                    <span className="text-gray-400 ml-2">— {s.description}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-sm text-gray-400">加载策略中...</p>
+              )}
             </div>
           )}
           {!generating && (

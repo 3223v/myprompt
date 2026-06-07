@@ -18,8 +18,8 @@ export default function NovelDetail({ novel, open, onClose, onUpdate }: NovelDet
   return (
     <Modal open={open} onClose={onClose} title={novel.title} size="lg">
       <div className="space-y-6">
-        <NovelInfo novel={novel} />
-        <NovelFiles novelId={novel.id} files={novel.source_files} onUpdated={onUpdate} />
+        <NovelInfo novel={novel} onUpdate={onUpdate} />
+        <NovelFiles novelId={novel.id} files={novel.source_files} onUpdated={onUpdate} hasNormalized={!!novel.normalized_path} />
         <NovelScripts novelId={novel.id} novelTitle={novel.title} novelAuthor={novel.author} />
       </div>
     </Modal>

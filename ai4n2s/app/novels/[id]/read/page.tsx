@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { NormalizedNovel } from '@/lib/types';
 
@@ -14,6 +14,12 @@ export default function NovelReaderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeChapter, setActiveChapter] = useState(0);
+  const [fontSize, setFontSize] = useState(16);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeChapter]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -70,81 +76,73 @@ export default function NovelReaderPage() {
   if (!chapter) return null;
 
   return (
-    <div className="flex h-screen">
-      {/* 左侧章节导航 */}
-      <aside className="w-64 shrink-0 border-r border-black bg-gray-50 flex flex-col">
-        {/* 头部 — 与侧栏品牌区同高 */}
-        <div className="border-b border-black px-4" style={{ height: 56 }}>
-          <button onClick={() => router.push('/novels')} className="text-xs text-gray-400 hover:text-black mt-1 block">
-            ← 返回
-          </button>
-          <p className="text-sm font-bold font-mono truncate">{data.metadata.title}</p>
+    <div className="flex h-screen flex-col">
+      {/* 顶栏 — 章节名称 + 元信息 + 字体大小调节 */}
+      <div className="border-b border-black px-8 flex items-center gap-6 shrink-0" style={{ height: 56 }}>
+        <button onClick={() => router.push('/novels')} className="text-xs text-gray-400 hover:text-black shrink-0">
+          ← 返回
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-bold font-mono truncate">{chapter.title}</h1>
         </div>
-
-        {/* 章节列表 */}
-        <nav className="flex-1 overflow-y-auto">
-          {data.chapters.map((ch, idx) => (
+        <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
+          {chapter.characters.length > 0 && (
+            <span title={`角色: ${chapter.characters.join('、')}`}>
+              角色: {chapter.characters.slice(0, 5).join('、')}{chapter.characters.length > 5 ? ` +${chapter.characters.length - 5}` : ''}
+            </span>
+          )}
+          {chapter.locations.length > 0 && (
+            <span title={`地点: ${chapter.locations.join('、')}`}>
+              地点: {chapter.locations.slice(0, 4).join('、')}{chapter.locations.length > 4 ? ` +${chapter.locations.length - 4}` : ''}
+            </span>
+          )}
+          {/* 字体大小调节 */}
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
             <button
-              key={idx}
-              onClick={() => setActiveChapter(idx)}
-              className={`
-                w-full text-left px-4 py-2.5 text-sm border-b border-gray-200
-                transition-colors duration-100
-                ${idx === activeChapter
-                  ? 'bg-white border-l-2 border-l-black font-semibold text-black'
-                  : 'hover:bg-white text-gray-600 border-l-2 border-l-transparent'
-                }
-              `}
+              onClick={() => setFontSize((s) => Math.max(12, s - 1))}
+              className="w-6 h-6 flex items-center justify-center text-sm font-mono hover:bg-black hover:text-white border border-gray-300"
             >
-              <span className="text-xs text-gray-400 mr-2 font-mono">{idx + 1}</span>
-              <span className="truncate block">{ch.title}</span>
-              <span className="text-xs text-gray-400 font-mono">{ch.content?.length?.toLocaleString() || 0} 字</span>
+              A−
             </button>
-          ))}
-        </nav>
-
-        {/* 底部 */}
-        <div className="border-t border-black px-4 py-2">
-          <a href={`/novels/${novelId}`} className="text-xs text-gray-400 hover:text-black">编辑 →</a>
-        </div>
-      </aside>
-
-      {/* 右侧正文区 */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* 顶栏 — 与侧栏头同高，包含元信息 */}
-        <div className="border-b border-black px-8 flex items-center gap-6 shrink-0" style={{ height: 56 }}>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-bold font-mono truncate">{chapter.title}</h1>
+            <span className="font-mono text-gray-400 w-8 text-center">{fontSize}px</span>
+            <button
+              onClick={() => setFontSize((s) => Math.min(28, s + 1))}
+              className="w-6 h-6 flex items-center justify-center text-sm font-mono hover:bg-black hover:text-white border border-gray-300"
+            >
+              A+
+            </button>
           </div>
-          <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
-            {chapter.characters.length > 0 && (
-              <span title={`角色: ${chapter.characters.join('、')}`}>
-                角色: {chapter.characters.slice(0, 5).join('、')}{chapter.characters.length > 5 ? ` +${chapter.characters.length - 5}` : ''}
-              </span>
-            )}
-            {chapter.locations.length > 0 && (
-              <span title={`地点: ${chapter.locations.join('、')}`}>
-                地点: {chapter.locations.slice(0, 4).join('、')}{chapter.locations.length > 4 ? ` +${chapter.locations.length - 4}` : ''}
-              </span>
-            )}
-            {chapter.summary && (
-              <span className="text-gray-400 italic max-w-xs truncate hidden lg:inline" title={chapter.summary}>
-                {chapter.summary.slice(0, 40)}…
-              </span>
-            )}
-            <span className="font-mono text-gray-400">{activeChapter + 1}/{data.chapters.length}</span>
-          </div>
+          <span className="font-mono text-gray-400">{activeChapter + 1}/{data.chapters.length}</span>
+          {activeChapter > 0 && (
+            <button
+              onClick={() => setActiveChapter(activeChapter - 1)}
+              className="text-xs text-gray-500 hover:text-black"
+            >
+              ← 上一章
+            </button>
+          )}
+          {activeChapter < data.chapters.length - 1 && (
+            <button
+              onClick={() => setActiveChapter(activeChapter + 1)}
+              className="text-xs text-gray-500 hover:text-black"
+            >
+              下一章 →
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* 正文 */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-8 py-8 max-w-3xl mx-auto text-base leading-relaxed text-gray-900 whitespace-pre-wrap">
-            {chapter.content || (
-              <p className="text-gray-400 text-center py-16">此章暂无内容</p>
-            )}
-          </div>
+      {/* 正文 */}
+      <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div
+          className="px-8 py-10 max-w-3xl mx-auto leading-relaxed text-gray-900"
+          style={{ fontSize: `${fontSize}px`, wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+        >
+          {chapter.content || (
+            <p className="text-gray-400 text-center py-16">此章暂无内容</p>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

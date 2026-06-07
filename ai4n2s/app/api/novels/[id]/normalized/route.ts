@@ -46,9 +46,9 @@ export async function PUT(
     const jsonStr = JSON.stringify(body, null, 2);
 
     // 验证 JSON 结构
-    if (!body.metadata || !body.characters || !body.scenes) {
+    if (!body.metadata || !body.chapters) {
       return NextResponse.json(
-        { success: false, error: '无效的结构化数据：缺少 metadata/characters/scenes 字段' },
+        { success: false, error: '无效的结构化数据：缺少 metadata/chapters 字段' },
         { status: 400 }
       );
     }

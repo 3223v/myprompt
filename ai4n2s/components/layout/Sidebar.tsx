@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: '角色管理', href: '/characters', disabled: true },
   { label: '场景编辑', href: '/scenes', disabled: true },
   { label: '导出中心', href: '/export', disabled: true },
+  { label: '设置', href: '/settings' },
 ];
 
 interface ScriptNavItem {
@@ -41,38 +42,23 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const [novelItems, setNovelItems] = useState<Array<{ id: string; title: string }>>([]);
   const [loadingNovels, setLoadingNovels] = useState(false);
 
-  // 小说章节子导航
-  const [chapterItems, setChapterItems] = useState<Array<{ index: number; title: string }>>([]);
-  const [loadingChapters, setLoadingChapters] = useState(false);
-
   const isScriptsRoute = pathname.startsWith('/scripts');
   const isNovelsRoute = pathname.startsWith('/novels');
-  const isReadRoute = pathname.startsWith('/novels/') && pathname.includes('/read');
-
-  const readNovelId = isReadRoute ? pathname.split('/')[2] : null;
   const activeNovelId = pathname.match(/^\/novels\/([^/]+)/)?.[1] || null;
 
   useEffect(() => {
     if (isScriptsRoute) {
       setLoadingScripts(true);
-      fetch('/api/novels')
+      fetch('/api/scripts')
         .then((r) => r.json())
-        .then(async (novelsData) => {
-          const items: ScriptNavItem[] = [];
-          if (novelsData.success && novelsData.data) {
-            for (const novel of novelsData.data) {
-              try {
-                const res = await fetch(`/api/novels/${novel.id}`);
-                const data = await res.json();
-                if (data.success && data.data.scripts) {
-                  for (const script of data.data.scripts) {
-                    items.push({ id: script.id, label: novel.title, version: script.version });
-                  }
-                }
-              } catch { /* skip */ }
-            }
+        .then((data) => {
+          if (data.success && data.data) {
+            setScriptItems(data.data.map((s: { id: string; novel_title?: string; version: string }) => ({
+              id: s.id,
+              label: s.novel_title || '独立剧本',
+              version: s.version,
+            })));
           }
-          setScriptItems(items);
         })
         .catch(() => {})
         .finally(() => setLoadingScripts(false));
@@ -92,31 +78,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     }
   }, [isScriptsRoute, isNovelsRoute, pathname]);
 
-  useEffect(() => {
-    if (isReadRoute && readNovelId) {
-      setLoadingChapters(true);
-      fetch(`/api/novels/${readNovelId}/normalized`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.success && data.data?.chapters) {
-            setChapterItems(data.data.chapters.map((ch: { index: number; title: string }) => ({
-              index: ch.index,
-              title: ch.title,
-            })));
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingChapters(false));
-    }
-  }, [isReadRoute, readNovelId, pathname]);
-
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
   };
 
   const isScriptActive = (scriptId: string) => pathname === `/scripts/${scriptId}`;
-  const isChapterActive = (idx: number) => pathname === `/novels/${readNovelId}/read`;
 
   return (
     <>
@@ -139,22 +106,24 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        {/* 品牌标识 */}
-        <div className="border-b border-black px-4 py-4">
+        {/* 品牌标识 — 与阅读页顶栏同高 */}
+        <div className="border-b border-black px-4 flex items-center" style={{ height: 56 }}>
+          <div className="flex-1">
+            <Link href="/" className="block" onClick={onClose}>
+              <h1 className="text-lg font-bold font-mono tracking-tight leading-tight">
+                AI4N2S
+              </h1>
+              <p className="text-xs text-gray-500 leading-tight">
+                小说转剧本系统
+              </p>
+            </Link>
+          </div>
           <button
             onClick={onClose}
-            className="float-right w-6 h-6 border border-black flex items-center justify-center text-xs hover:bg-black hover:text-white"
+            className="w-6 h-6 border border-black flex items-center justify-center text-xs hover:bg-black hover:text-white shrink-0"
           >
             ✕
           </button>
-          <Link href="/" className="block" onClick={onClose}>
-            <h1 className="text-lg font-bold font-mono tracking-tight">
-              AI4N2S
-            </h1>
-            <p className="text-xs text-gray-500 mt-0.5">
-              小说转剧本系统
-            </p>
-          </Link>
         </div>
 
         {/* 主导航 */}
@@ -258,41 +227,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* 章节子导航 — 仅在小说阅读页显示 */}
-        {isReadRoute && readNovelId && (
-          <div className="flex-1 overflow-y-auto border-t border-gray-200">
-            <div className="px-4 py-2 flex justify-between items-center">
-              <p className="text-xs text-gray-400 uppercase tracking-wider">目录</p>
-              <Link href={`/novels/${readNovelId}`} onClick={onClose} className="text-xs text-gray-400 hover:text-black">编辑</Link>
-            </div>
-            {loadingChapters ? (
-              <p className="px-4 py-2 text-xs text-gray-300">加载中...</p>
-            ) : chapterItems.length > 0 ? (
-              <ul>
-                {chapterItems.map((ch) => (
-                  <li key={ch.index}>
-                    <button
-                      onClick={() => {
-                        const el = document.querySelector(`[data-chapter="${ch.index}"]`);
-                        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        onClose();
-                      }}
-                      className={`w-full text-left block px-4 py-2 text-xs transition-colors duration-100 border-l-2 ${isChapterActive(ch.index) ? 'border-black bg-gray-100 font-semibold text-black' : 'border-transparent hover:bg-gray-50 hover:border-gray-300 text-gray-600'}`}
-                    >
-                      <span className="text-gray-400 mr-1 font-mono">{ch.index + 1}.</span>
-                      <span className="truncate">{ch.title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="px-4 py-2 text-xs text-gray-300">暂无章节数据</p>
-            )}
-          </div>
-        )}
-
         {/* 无子导航时占位 */}
-        {!isScriptsRoute && !isNovelsRoute && !isReadRoute && <div className="flex-1" />}
+        {!isScriptsRoute && !isNovelsRoute && <div className="flex-1" />}
 
         {/* 底部版本号 */}
         <div className="border-t border-black px-4 py-3">

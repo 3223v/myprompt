@@ -8,6 +8,7 @@
 import { registerScriptGenerationStrategy } from '@/lib/pipeline/types';
 import { DefaultScriptGenerationStrategy } from './default-strategy';
 import { AIRAGScriptGenerationStrategy } from './ai-rag-strategy';
+import { LLMScriptGenerationStrategy } from './llm-strategy';
 
 let initialized = false;
 
@@ -16,9 +17,11 @@ export function ensureStrategiesRegistered(): void {
 
   registerScriptGenerationStrategy(new DefaultScriptGenerationStrategy());
   registerScriptGenerationStrategy(new AIRAGScriptGenerationStrategy());
+  registerScriptGenerationStrategy(new LLMScriptGenerationStrategy());
 
   initialized = true;
 }
 
 export { DefaultScriptGenerationStrategy } from './default-strategy';
 export { AIRAGScriptGenerationStrategy } from './ai-rag-strategy';
+export { LLMScriptGenerationStrategy } from './llm-strategy';
