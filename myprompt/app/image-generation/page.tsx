@@ -1,13 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function ImageGenerationPage() {
-  return (
-    <div className="relative z-10 flex items-center justify-center h-full">
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold tracking-wider mb-2">图片生成</h2>
-        <span className="text-xs text-zinc-600 tracking-[0.2em] uppercase">
-          Image Generation
-        </span>
-        <p className="mt-8 text-sm text-zinc-500">内容区域 — 待开发</p>
-      </div>
-    </div>
-  );
+  redirect("/image-generation/text-to-image");
 }

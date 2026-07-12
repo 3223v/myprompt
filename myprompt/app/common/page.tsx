@@ -1,13 +1,6 @@
-export default function CommonPage() {
-  return (
-    <div className="relative z-10 flex items-center justify-center h-full">
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold tracking-wider mb-2">常用</h2>
-        <span className="text-xs text-zinc-600 tracking-[0.2em] uppercase">
-          Common
-        </span>
-        <p className="mt-8 text-sm text-zinc-500">内容区域 — 待开发</p>
-      </div>
-    </div>
-  );
+"use client";
+import { PromptFlowWorkspace } from "../image-generation/text-to-image/page";
+
+export default function CommonPage(){
+  return <PromptFlowWorkspace workspace="common" title="常用提示词" studioLabel="Prompt library" embeddedInImageStudio={false} outputLabel="关联素材"/>;
 }

@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+myprompt.db*
+/storage/uploads/
 
 # debug
 npm-debug.log*
